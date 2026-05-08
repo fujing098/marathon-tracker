@@ -165,7 +165,6 @@ export default async function handler(req, res) {
         "摘要": item.summary || "",
         "分类": item.category || "赛事动态",
         "审核状态": "已通过",
-        "来源类型": "自动抓取",
       });
       written++;
     }
