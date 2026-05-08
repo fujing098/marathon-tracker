@@ -1,6 +1,5 @@
-const APP_TOKEN = "F1rmb1U2oaPqULsAtq5cqj7hnbh"; 
+const APP_TOKEN = "F1rmb1U2oaPqULsAtq5cqj7hnbh";
 
-// ─── 飞书 Token ───────────────────────────────────────────
 async function getFeishuToken() {
   const res = await fetch("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal", {
     method: "POST",
@@ -15,7 +14,6 @@ async function getFeishuToken() {
   return data.tenant_access_token;
 }
 
-// ─── 获取所有表格 ID ──────────────────────────────────────
 async function getTableIds(token) {
   const res = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${APP_TOKEN}/tables`, {
     headers: { "Authorization": `Bearer ${token}` },
@@ -30,7 +28,6 @@ async function getTableIds(token) {
   };
 }
 
-// ─── 获取公众号清单 ───────────────────────────────────────
 async function getWechatAccounts(token, tableId) {
   if (!tableId) return [];
   const res = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${APP_TOKEN}/tables/${tableId}/records?page_size=50`, {
@@ -43,7 +40,6 @@ async function getWechatAccounts(token, tableId) {
     .filter(a => a.name && a.status !== "停用");
 }
 
-// ─── 获取已有数据（去重用）───────────────────────────────
 async function getExisting(token, tableId, field) {
   if (!tableId) return new Set();
   const res = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${APP_TOKEN}/tables/${tableId}/records?page_size=200`, {
@@ -54,7 +50,6 @@ async function getExisting(token, tableId, field) {
   return new Set((data.data.items || []).map(r => r.fields[field] || ""));
 }
 
-// ─── 写入飞书记录 ─────────────────────────────────────────
 async function writeRecord(token, tableId, fields) {
   const res = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${APP_TOKEN}/tables/${tableId}/records`, {
     method: "POST",
@@ -65,7 +60,6 @@ async function writeRecord(token, tableId, fields) {
   if (data.code !== 0) throw new Error("写入失败：" + data.msg);
 }
 
-// ─── Kimi 搜索通用函数 ────────────────────────────────────
 async function kimiSearch(prompt) {
   const res = await fetch("https://api.moonshot.cn/v1/chat/completions", {
     method: "POST",
@@ -88,7 +82,6 @@ async function kimiSearch(prompt) {
   try { return JSON.parse(clean.slice(s, e + 1)); } catch { return []; }
 }
 
-// ─── 按月份分批搜索资讯 ───────────────────────────────────
 async function searchByMonth(year, month) {
   const monthStr = `${year}年${month}月`;
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -106,7 +99,6 @@ async function searchByMonth(year, month) {
   return await kimiSearch(prompt);
 }
 
-// ─── 搜索公众号历史内容 ───────────────────────────────────
 async function searchWechatHistory(accounts) {
   if (!accounts.length) return [];
   const accountList = accounts.map(a => `"${a.name}"`).join("、");
@@ -127,7 +119,6 @@ async function searchWechatHistory(accounts) {
   return await kimiSearch(prompt);
 }
 
-// ─── 主函数 ───────────────────────────────────────────────
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -147,13 +138,13 @@ export default async function handler(req, res) {
 
     // 按月分批搜索 2026.01 至今
     for (let y = 2026; y <= endYear; y++) {
-      const mStart = y === 2026 ? 1 : 1;
-      const mEnd   = y === endYear ? endMonth : 12;
+      const mStart = 1;
+      const mEnd = (y === endYear) ? endMonth : 12;
       for (let m = mStart; m <= mEnd; m++) {
         console.log(`搜索 ${y}年${m}月...`);
         const items = await searchByMonth(y, m);
         allItems = allItems.concat(items);
-        await new Promise(r => setTimeout(r, 1000)); // 避免限流
+        await new Promise(r => setTimeout(r, 1000));
       }
     }
 
@@ -170,7 +161,7 @@ export default async function handler(req, res) {
       seenTitles.add(item.title);
       return true;
     });
-    console.log(`推文去重后：${newItems.length} 条`);
+    console.log(`去重后：${newItems.length} 条`);
 
     // 写入推文资讯表
     let writtenNews = 0;
@@ -191,7 +182,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // 提取并写入赛事信息表（赛事名称去重）
+    // 写入赛事信息表（赛事名称去重）
     let writtenRaces = 0;
     if (raceTableId) {
       for (const item of newItems) {
