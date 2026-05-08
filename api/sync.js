@@ -161,9 +161,9 @@ export default async function handler(req, res) {
         "标题": item.title,
         "来源": item.source,
         "发布日期": new Date(item.date).getTime(),
-        "链接": item.url,
-        "摘要": item.summary,
-        "分类": item.category,
+        "链接": item.url ? { link: item.url, text: item.url } : "",
+        "摘要": item.summary || "",
+        "分类": item.category || "赛事动态",
         "审核状态": "已通过",
         "来源类型": "自动抓取",
       });
