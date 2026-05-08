@@ -1,4 +1,3 @@
-
 const APP_TOKEN = "F1rmb1U2oaPqULsAtq5cqj7hnbh";
 
 async function getFeishuToken() {
@@ -137,11 +136,9 @@ export default async function handler(req, res) {
 
     let allItems = [];
 
-    // 按月分批搜索 2026.01 至今
     for (let y = 2026; y <= endYear; y++) {
-      const mStart = 1;
       const mEnd = (y === endYear) ? endMonth : 12;
-      for (let m = mStart; m <= mEnd; m++) {
+      for (let m = 1; m <= mEnd; m++) {
         console.log(`搜索 ${y}年${m}月...`);
         const items = await searchByMonth(y, m);
         allItems = allItems.concat(items);
@@ -149,12 +146,10 @@ export default async function handler(req, res) {
       }
     }
 
-    // 搜索公众号历史内容
     const wechatItems = await searchWechatHistory(accounts);
     allItems = allItems.concat(wechatItems);
     console.log(`总计抓取：${allItems.length} 条`);
 
-    // 推文去重
     const seenTitles = new Set(existingTitles);
     const seenRaces  = new Set(existingRaces);
     const newItems = allItems.filter(item => {
@@ -164,7 +159,6 @@ export default async function handler(req, res) {
     });
     console.log(`去重后：${newItems.length} 条`);
 
-    // 写入推文资讯表
     let writtenNews = 0;
     for (const item of newItems) {
       try {
@@ -183,7 +177,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // 写入赛事信息表（赛事名称去重）
     let writtenRaces = 0;
     if (raceTableId) {
       for (const item of newItems) {
