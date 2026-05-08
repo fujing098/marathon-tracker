@@ -15,7 +15,7 @@ async function getFeishuToken() {
   return data.tenant_access_token;
 }
 
-// ─── 获取表格 ID ──────────────────────────────────────────
+// ─── 获取所有表格 ID ──────────────────────────────────────
 async function getTableIds(token) {
   const res = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${APP_TOKEN}/tables`, {
     headers: { "Authorization": `Bearer ${token}` },
@@ -23,89 +23,50 @@ async function getTableIds(token) {
   const data = await res.json();
   if (data.code !== 0) throw new Error("获取表格列表失败：" + data.msg);
   const tables = data.data.items;
-  const newsTable = tables.find(t => t.name.includes("推文")) || tables[0];
-  const raceTable = tables.find(t => t.name.includes("赛事信息"));
-  return { newsTableId: newsTable.table_id, raceTableId: raceTable?.table_id };
+  return {
+    newsTableId:   tables.find(t => t.name.includes("推文"))?.table_id || tables[0]?.table_id,
+    raceTableId:   tables.find(t => t.name.includes("赛事信息"))?.table_id,
+    wechatTableId: tables.find(t => t.name.includes("公众号"))?.table_id,
+  };
 }
 
-// ─── 获取已有标题（去重）─────────────────────────────────
-async function getExistingTitles(token, tableId) {
-  const res = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${APP_TOKEN}/tables/${tableId}/records?page_size=100`, {
+// ─── 获取公众号清单 ───────────────────────────────────────
+async function getWechatAccounts(token, tableId) {
+  if (!tableId) return [];
+  const res = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${APP_TOKEN}/tables/${tableId}/records?page_size=50`, {
+    headers: { "Authorization": `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (data.code !== 0) return [];
+  return (data.data.items || [])
+    .map(r => ({ name: r.fields["公众号名称"] || "", status: r.fields["状态"] || "启用" }))
+    .filter(a => a.name && a.status !== "停用");
+}
+
+// ─── 获取已有数据（去重用）───────────────────────────────
+async function getExisting(token, tableId, field) {
+  if (!tableId) return new Set();
+  const res = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${APP_TOKEN}/tables/${tableId}/records?page_size=200`, {
     headers: { "Authorization": `Bearer ${token}` },
   });
   const data = await res.json();
   if (data.code !== 0) return new Set();
-  return new Set((data.data.items || []).map(r => r.fields["标题"] || ""));
+  return new Set((data.data.items || []).map(r => r.fields[field] || ""));
 }
 
 // ─── 写入飞书记录 ─────────────────────────────────────────
 async function writeRecord(token, tableId, fields) {
   const res = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${APP_TOKEN}/tables/${tableId}/records`, {
     method: "POST",
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ fields }),
   });
   const data = await res.json();
-  if (data.code !== 0) throw new Error("写入记录失败：" + data.msg);
-  return data;
+  if (data.code !== 0) throw new Error("写入失败：" + data.msg);
 }
 
-// ─── Kimi 搜索最新资讯 ───────────────────────────────────
-async function fetchNewsFromKimi() {
-  try {
-    const today = new Date().toISOString().slice(0, 10);
-    const res = await fetch("https://api.moonshot.cn/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.KIMI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "moonshot-v1-8k",
-        max_tokens: 2000,
-        messages: [{
-          role: "user",
-          content: `今天是${today}，请列出最近7天内中国马拉松赛事的真实资讯，包括：报名开始、赛事公告、成绩发布等。
-
-每条资讯必须是真实存在的，不要编造。
-
-严格返回JSON数组，不要任何其他文字：
-[{"title":"资讯标题","source":"媒体来源","date":"YYYY-MM-DD","url":"原文链接或空字符串","summary":"50字以内摘要","category":"报名信息或赛事动态或成绩结果"}]
-
-返回5-10条，只返回最近真实发生的资讯。`
-        }],
-      }),
-    });
-    const data = await res.json();
-    const text = data.choices?.[0]?.message?.content || "[]";
-    const clean = text.replace(/```json|```/g, "").trim();
-    const start = clean.indexOf("["), end = clean.lastIndexOf("]");
-    if (start === -1) return [];
-    return JSON.parse(clean.slice(start, end + 1));
-  } catch(e) {
-    console.error("Kimi 搜索失败：", e.message);
-    return [];
-  }
-}
-
-// ─── Kimi AI 审核 ─────────────────────────────────────────
-async function aiReview(items) {
-  if (!items.length) return [];
-  const prompt = `你是马拉松赛事资讯审核员。以下是一批新闻标题，请判断每条是否与马拉松/跑步赛事直接相关（报名信息、赛事动态、成绩结果、赛事公告等）。
-
-不相关的内容包括：娱乐八卦、与赛事无关的健身内容、广告、其他运动项目等。
-
-新闻列表：
-${items.map((item, i) => `${i + 1}. ${item.title}`).join("\n")}
-
-严格返回JSON数组，不要任何其他文字：
-[{"index":1,"pass":true,"category":"报名信息","summary":"50字以内摘要"},{"index":2,"pass":false}]
-
-category 只能是：报名信息、赛事动态、成绩结果`;
-
+// ─── Kimi 搜索通用函数 ────────────────────────────────────
+async function kimiSearch(prompt) {
   const res = await fetch("https://api.moonshot.cn/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -114,23 +75,56 @@ category 只能是：报名信息、赛事动态、成绩结果`;
     },
     body: JSON.stringify({
       model: "moonshot-v1-8k",
-      max_tokens: 1000,
+      max_tokens: 3000,
+      tools: [{ type: "builtin_function", function: { name: "$web_search" } }],
       messages: [{ role: "user", content: prompt }],
     }),
   });
   const data = await res.json();
   const text = data.choices?.[0]?.message?.content || "[]";
   const clean = text.replace(/```json|```/g, "").trim();
-  const start = clean.indexOf("["), end = clean.lastIndexOf("]");
-  if (start === -1) return [];
-  const results = JSON.parse(clean.slice(start, end + 1));
-  return items
-    .map((item, i) => {
-      const r = results.find(x => x.index === i + 1);
-      if (!r || !r.pass) return null;
-      return { ...item, category: r.category || "赛事动态", summary: r.summary || "" };
-    })
-    .filter(Boolean);
+  const s = clean.indexOf("["), e = clean.lastIndexOf("]");
+  if (s === -1) return [];
+  try { return JSON.parse(clean.slice(s, e + 1)); } catch { return []; }
+}
+
+// ─── 按月份分批搜索资讯 ───────────────────────────────────
+async function searchByMonth(year, month) {
+  const monthStr = `${year}年${month}月`;
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const prompt = `请联网搜索${monthStr}中国跑步赛事的所有资讯，包括：马拉松、越野赛、公路跑等赛事的报名开始、赛事公告、成绩发布、赛事动态等。时间范围：${year}-${String(month).padStart(2,"0")}-01 到 ${year}-${String(month).padStart(2,"0")}-${daysInMonth}。
+
+赛事类型判断规则：
+- 马拉松：全程、半程、10公里等公路跑赛事
+- 越野赛：山地、越野、trail、徒步比赛
+- 其他赛事：障碍赛、定向越野等其他类型
+
+严格返回JSON数组，不要任何其他文字：
+[{"title":"资讯标题","source":"媒体来源","date":"YYYY-MM-DD","url":"链接或空字符串","summary":"50字摘要","category":"报名信息或赛事动态或成绩结果","raceType":"马拉松或越野赛或其他赛事","raceInfo":{"name":"赛事名称或null","city":"城市或null","raceDate":"比赛日期YYYY-MM-DD或null","regStart":"报名开始日期或null","regEnd":"报名截止日期或null","scale":"规模数字或null","official":"官网或null","raceType":"马拉松或越野赛或其他赛事"}}]
+
+返回所有找到的真实资讯，raceInfo 只在包含具体报名信息时填写，否则设为 null。`;
+  return await kimiSearch(prompt);
+}
+
+// ─── 搜索公众号历史内容 ───────────────────────────────────
+async function searchWechatHistory(accounts) {
+  if (!accounts.length) return [];
+  const accountList = accounts.map(a => `"${a.name}"`).join("、");
+  const today = new Date().toISOString().slice(0, 10);
+  const prompt = `请联网搜索以下微信公众号从2026年1月1日到${today}发布的所有内容：${accountList}。
+
+只返回与跑步赛事直接相关的内容（马拉松、越野赛、公路跑等），不相关的过滤掉。
+
+赛事类型判断规则：
+- 马拉松：全程、半程、10公里等公路跑赛事
+- 越野赛：山地、越野、trail、徒步比赛
+- 其他赛事：障碍赛、定向越野等其他类型
+
+严格返回JSON数组，不要任何其他文字：
+[{"title":"文章标题","source":"公众号名称","date":"YYYY-MM-DD","url":"链接或空字符串","summary":"50字摘要","category":"报名信息或赛事动态或成绩结果","raceType":"马拉松或越野赛或其他赛事","raceInfo":{"name":"赛事名称或null","city":"城市或null","raceDate":"比赛日期YYYY-MM-DD或null","regStart":"报名开始日期或null","regEnd":"报名截止日期或null","scale":"规模数字或null","official":"官网或null","raceType":"马拉松或越野赛或其他赛事"}}]
+
+没有相关内容返回 []。`;
+  return await kimiSearch(prompt);
 }
 
 // ─── 主函数 ───────────────────────────────────────────────
@@ -140,40 +134,96 @@ export default async function handler(req, res) {
 
   try {
     const token = await getFeishuToken();
-    const { newsTableId } = await getTableIds(token);
-    const existingTitles = await getExistingTitles(token, newsTableId);
+    const { newsTableId, raceTableId, wechatTableId } = await getTableIds(token);
+    const existingTitles = await getExisting(token, newsTableId, "标题");
+    const existingRaces  = await getExisting(token, raceTableId, "赛事名称");
+    const accounts = await getWechatAccounts(token, wechatTableId);
 
-    // 1. Kimi 搜索最新资讯
-    const kimiItems = await fetchNewsFromKimi();
-    console.log(`Kimi 搜索：${kimiItems.length} 条`);
+    const today = new Date();
+    const endYear = today.getFullYear();
+    const endMonth = today.getMonth() + 1;
 
-    // 2. 去重
-    const newItems = kimiItems.filter(item => !existingTitles.has(item.title));
-    console.log(`去重后：${newItems.length} 条新内容`);
+    let allItems = [];
 
-    // 3. 直接写入（Kimi 已判断相关性，跳过二次审核）
-    const approved = newItems;
+    // 按月分批搜索 2026.01 至今
+    for (let y = 2026; y <= endYear; y++) {
+      const mStart = y === 2026 ? 1 : 1;
+      const mEnd   = y === endYear ? endMonth : 12;
+      for (let m = mStart; m <= mEnd; m++) {
+        console.log(`搜索 ${y}年${m}月...`);
+        const items = await searchByMonth(y, m);
+        allItems = allItems.concat(items);
+        await new Promise(r => setTimeout(r, 1000)); // 避免限流
+      }
+    }
 
-    // 4. 写入飞书多维表格
-    let written = 0;
-    for (const item of approved) {
-      await writeRecord(token, newsTableId, {
-        "标题": item.title,
-        "来源": item.source,
-        "发布日期": new Date(item.date).getTime(),
-        "链接": item.url ? { link: item.url, text: item.url } : "",
-        "摘要": item.summary || "",
-        "分类": item.category || "赛事动态",
-      });
-      written++;
+    // 搜索公众号历史内容
+    const wechatItems = await searchWechatHistory(accounts);
+    allItems = allItems.concat(wechatItems);
+    console.log(`总计抓取：${allItems.length} 条`);
+
+    // 推文去重
+    const seenTitles = new Set(existingTitles);
+    const seenRaces  = new Set(existingRaces);
+    const newItems = allItems.filter(item => {
+      if (!item.title || seenTitles.has(item.title)) return false;
+      seenTitles.add(item.title);
+      return true;
+    });
+    console.log(`推文去重后：${newItems.length} 条`);
+
+    // 写入推文资讯表
+    let writtenNews = 0;
+    for (const item of newItems) {
+      try {
+        await writeRecord(token, newsTableId, {
+          "标题":    item.title,
+          "来源":    item.source || "",
+          "发布日期": item.date ? new Date(item.date).getTime() : Date.now(),
+          "链接":    item.url ? { link: item.url, text: item.url } : "",
+          "摘要":    item.summary || "",
+          "分类":    item.category || "赛事动态",
+          "赛事类型": item.raceType || "马拉松",
+        });
+        writtenNews++;
+      } catch(e) {
+        console.error("推文写入失败：", e.message);
+      }
+    }
+
+    // 提取并写入赛事信息表（赛事名称去重）
+    let writtenRaces = 0;
+    if (raceTableId) {
+      for (const item of newItems) {
+        const ri = item.raceInfo;
+        if (ri && ri.name && !seenRaces.has(ri.name)) {
+          seenRaces.add(ri.name);
+          try {
+            await writeRecord(token, raceTableId, {
+              "赛事名称": ri.name,
+              "城市":     ri.city || "",
+              "比赛日期": ri.raceDate ? new Date(ri.raceDate).getTime() : "",
+              "报名开始": ri.regStart ? new Date(ri.regStart).getTime() : "",
+              "报名截止": ri.regEnd   ? new Date(ri.regEnd).getTime()   : "",
+              "赛事规模": ri.scale ? Number(ri.scale) : "",
+              "官网地址": ri.official ? { link: ri.official, text: ri.official } : "",
+              "状态":     "报名中",
+              "赛事类型": ri.raceType || item.raceType || "马拉松",
+            });
+            writtenRaces++;
+          } catch(e) {
+            console.error("赛事写入失败：", e.message);
+          }
+        }
+      }
     }
 
     res.status(200).json({
       success: true,
-      fetched: kimiItems.length,
-      new: newItems.length,
-      approved: approved.length,
-      written,
+      total:   allItems.length,
+      new:     newItems.length,
+      writtenNews,
+      writtenRaces,
     });
   } catch(e) {
     res.status(500).json({ error: e.message });
