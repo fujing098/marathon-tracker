@@ -1,11 +1,3 @@
-// 在 handler 函数里最开始加
-console.log("sync.js version: 2025-NEW");
-
-// 或者在返回的 JSON 里加一个字段
-return res.json({ version: "NEW", success: true, ... });
-
-
-
 const APP_TOKEN = "F1rmb1U2oaPqULsAtq5cqj7hnbh";
 
 async function getFeishuToken() {
