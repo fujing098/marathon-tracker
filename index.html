@@ -30,9 +30,9 @@
   .cat-成绩结果{background:rgba(168,85,247,0.08);color:#7C3AED;}
   .btn{width:100%;padding:11px;border-radius:10px;border:none;background:#00C985;color:#fff;cursor:pointer;font-size:13px;font-weight:500;margin-bottom:14px;}
   .btn:disabled{background:#CCC;cursor:not-allowed;}
-  .loading{text-align:center;padding:2rem 0;color:#AAA;font-size:13px;}
+  .loading{text-align:center;padding:2rem 0;color:#AAA;font-size:13px;display:none;}
   .loading-icon{font-size:24px;margin-bottom:8px;}
-  .error{padding:10px 12px;background:rgba(239,68,68,0.07);border-radius:10px;border:1px solid rgba(239,68,68,0.15);font-size:13px;color:#B91C1C;margin-bottom:12px;}
+  .error{padding:10px 12px;background:rgba(239,68,68,0.07);border-radius:10px;border:1px solid rgba(239,68,68,0.15);font-size:13px;color:#B91C1C;margin-bottom:12px;display:none;}
   .meta{font-size:12px;color:#AAA;margin-bottom:10px;}
   .card-top{height:3px;background:linear-gradient(90deg,#00C985,#A855F7);}
   .race-card{background:#fff;border:1px solid rgba(0,0,0,0.07);border-radius:14px;margin-bottom:10px;overflow:hidden;}
@@ -63,7 +63,6 @@
   .weather-key{font-size:10px;color:#AAA;}
   .weather-tip{font-size:11px;border-radius:6px;padding:6px 8px;line-height:1.5;}
   .news-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:none;border-top:1px solid rgba(0,0,0,0.07);padding:8px 0 0;cursor:pointer;font-size:12px;color:#666;}
-  .news-list{margin-top:8px;}
   .news-row{display:flex;gap:8px;padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.07);}
   .news-row:last-child{border-bottom:none;}
   .news-row-date{font-size:10px;color:#AAA;white-space:nowrap;padding-top:2px;min-width:48px;}
@@ -103,8 +102,8 @@
   <!-- 最新消息 Tab -->
   <div id="tab-feed" class="content" style="display:none;">
     <button class="btn" id="fetch-btn" onclick="fetchNews()">🔍 搜索最新马拉松资讯</button>
-    <div id="feed-error" style="display:none;" class="error"></div>
-    <div id="feed-loading" style="display:none;" class="loading"><div class="loading-icon">⏳</div>AI 正在搜索最新资讯...</div>
+    <div id="feed-error" class="error"></div>
+    <div id="feed-loading" class="loading"><div class="loading-icon">⏳</div>Kimi 正在实时搜索最新资讯...</div>
     <div id="feed-list"></div>
   </div>
 </div>
@@ -123,16 +122,16 @@ const RACES = [
 ];
 
 const FEED_NEWS = [
-  {title:"2026无锡马拉松报名人数达495635人，创中国马拉松报名新高",source:"新浪体育",date:"2026-03-26",url:"",summary:"无锡马拉松半马中签率仅2.9%，武汉马拉松报名451431人，多场赛事报名超20万。",category:"报名信息"},
-  {title:"2026上海马拉松报名正式开启，截止5月29日，全程规模3万人",source:"上马官网",date:"2026-04-29",url:"https://www.shang-ma.com",summary:"报名通道4月29日15:00开启，报名费200元，出签结果6月30日公布。",category:"报名信息"},
-  {title:"田协发布2026年492场全国马拉松赛事目录，浙江以41场居首",source:"扬子晚报",date:"2025-12-19",url:"",summary:"2026年全国马拉松赛事492场，含254场A类、67场B类、171场C类。",category:"赛事动态"},
-  {title:"北京马拉松暂定10月18日举行，报名预计7月开放",source:"闹跑",date:"2025-12-19",url:"https://www.nowrun.cn/race/12",summary:"北马全程项目为A类认证，规模3万人。",category:"赛事动态"},
+  {title:"2026无锡马拉松报名人数达495635人，创中国马拉松报名新高",source:"新浪体育",date:"2026-03-26",url:"",summary:"无锡马拉松半马中签率仅2.9%，武汉马拉松报名451431人。",category:"报名信息"},
+  {title:"2026上海马拉松报名正式开启，截止5月29日",source:"上马官网",date:"2026-04-29",url:"https://www.shang-ma.com",summary:"报名通道4月29日15:00开启，报名费200元。",category:"报名信息"},
+  {title:"田协发布2026年492场全国马拉松赛事目录",source:"扬子晚报",date:"2025-12-19",url:"",summary:"2026年全国马拉松赛事492场，浙江以41场居首。",category:"赛事动态"},
+  {title:"北京马拉松暂定10月18日举行，报名预计7月开放",source:"闹跑",date:"2025-12-19",url:"https://www.nowrun.cn/race/12",summary:"北马全程A类认证，规模3万人。",category:"赛事动态"},
 ];
 
-const daysLeft = d => d ? Math.ceil((new Date(d)-new Date())/86400000) : null;
+const fmt = n => n>=10000?(n/10000).toFixed(n%10000===0?0:1)+"万":n.toLocaleString();
+const daysLeft = d => d?Math.ceil((new Date(d)-new Date())/86400000):null;
 const isReg = r => { const n=daysLeft(r.deadline); return n!==null&&n>=0; };
 const isUp  = r => !r.deadline && !!r.regStart;
-const fmt = n => n>=10000?(n/10000).toFixed(n%10000===0?0:1)+"万":n.toLocaleString();
 
 function wRate(w) {
   let s=100,tips=[];
@@ -149,14 +148,12 @@ function wRate(w) {
   return{label:"挑战",tip:tips.join("；")};
 }
 
-let openNews = {};
 let currentFilter = "all";
 
 function filterStatus(f) {
   currentFilter = f;
   ["all","reg","up"].forEach(k => {
-    const b = document.getElementById("fbtn-"+k);
-    b.classList.toggle("active", k===f);
+    document.getElementById("fbtn-"+k).classList.toggle("active", k===f);
   });
   renderRaces();
 }
@@ -207,14 +204,14 @@ function renderRaces() {
           <span>📰 相关资讯 <span style="color:#00C985;font-weight:500;">${news.length}</span> 条</span>
           <span id="arrow-${r.id}">▼</span>
         </button>
-        <div class="news-list" id="news-${r.id}" style="display:none;">${newsHtml}</div>
+        <div id="news-${r.id}" style="display:none;">${newsHtml}</div>
         `:""}
       </div>
     </div>`;
   }).join("");
 }
 
-function toggleNews(id, btn) {
+function toggleNews(id) {
   const el = document.getElementById("news-"+id);
   const arrow = document.getElementById("arrow-"+id);
   const open = el.style.display==="none";
@@ -225,7 +222,6 @@ function toggleNews(id, btn) {
 function switchTab(tab) {
   document.getElementById("tab-races").style.display = tab==="races"?"block":"none";
   document.getElementById("tab-feed").style.display  = tab==="feed"?"block":"none";
-  document.querySelectorAll(".tab").forEach((t,i)=>t.classList.toggle("active",[" races","feed"][i]===tab));
   document.querySelectorAll(".tab")[0].classList.toggle("active", tab==="races");
   document.querySelectorAll(".tab")[1].classList.toggle("active", tab==="feed");
 }
@@ -244,29 +240,44 @@ function renderFeedNews(items) {
 }
 
 async function fetchNews() {
-  const btn = document.getElementById("fetch-btn");
-  const errEl = document.getElementById("feed-error");
+  const btn    = document.getElementById("fetch-btn");
+  const errEl  = document.getElementById("feed-error");
   const loadEl = document.getElementById("feed-loading");
   const listEl = document.getElementById("feed-list");
+
   btn.disabled = true; btn.textContent = "搜索中...";
-  errEl.style.display="none"; loadEl.style.display="block"; listEl.innerHTML="";
+  errEl.style.display = "none";
+  loadEl.style.display = "block";
+  listEl.innerHTML = "";
+
   try {
-    const res = await fetch("/api/news", { method:"POST" });
+    const res  = await fetch("/api/search", { method: "GET" });
     const data = await res.json();
-    if(data.error) throw new Error(data.error);
-    loadEl.style.display="none";
-    listEl.innerHTML = `<div class="meta">共 ${data.items.length} 条 · AI 实时搜索</div>` + renderFeedNews(data.items);
+    if (data.error) throw new Error(data.error);
+
+    loadEl.style.display = "none";
+    if (data.items && data.items.length > 0) {
+      listEl.innerHTML = `<div class="meta">共 ${data.items.length} 条 · Kimi 实时搜索</div>`
+        + renderFeedNews(data.items);
+    } else {
+      listEl.innerHTML = `<div class="meta">精选资讯 · 共 ${FEED_NEWS.length} 条</div>`
+        + renderFeedNews(FEED_NEWS);
+    }
   } catch(e) {
-    loadEl.style.display="none";
-    errEl.style.display="block"; errEl.textContent="⚠️ "+e.message+"，展示精选资讯";
-    listEl.innerHTML = `<div class="meta">精选资讯 · 共 ${FEED_NEWS.length} 条</div>` + renderFeedNews(FEED_NEWS);
+    loadEl.style.display = "none";
+    errEl.style.display = "block";
+    errEl.textContent = "⚠️ " + e.message + "，展示精选资讯";
+    listEl.innerHTML = `<div class="meta">精选资讯 · 共 ${FEED_NEWS.length} 条</div>`
+      + renderFeedNews(FEED_NEWS);
   }
-  btn.disabled=false; btn.textContent="🔍 搜索最新马拉松资讯";
+
+  btn.disabled = false; btn.textContent = "🔍 搜索最新马拉松资讯";
 }
 
 // 初始化
 renderRaces();
-document.getElementById("feed-list").innerHTML = `<div class="meta">精选资讯 · 共 ${FEED_NEWS.length} 条</div>` + renderFeedNews(FEED_NEWS);
+document.getElementById("feed-list").innerHTML =
+  `<div class="meta">精选资讯 · 共 ${FEED_NEWS.length} 条</div>` + renderFeedNews(FEED_NEWS);
 </script>
 </body>
 </html>
