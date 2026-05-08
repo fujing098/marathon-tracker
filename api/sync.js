@@ -53,33 +53,42 @@ async function writeRecord(token, tableId, fields) {
   return data;
 }
 
-// ─── 抓取谷歌新闻 RSS ────────────────────────────────────
-async function fetchGoogleNews() {
-  const sources = [
-    { url:"https://news.google.com/rss/search?q=马拉松+报名&hl=zh-CN&gl=CN&ceid=CN:zh-Hans", source:"谷歌新闻" },
-    { url:"https://news.google.com/rss/search?q=马拉松+赛事&hl=zh-CN&gl=CN&ceid=CN:zh-Hans", source:"谷歌新闻" },
-  ];
-  const items = [];
-  for (const s of sources) {
-    try {
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(s.url)}`;
-      const res = await fetch(proxyUrl);
-      const json = await res.json();
-      const xml = json.contents || "";
-      const titleRegex = /<item>[\s\S]*?<title><!\[CDATA\[([^\]]+)\]\]><\/title>[\s\S]*?<link>([^<]+)<\/link>[\s\S]*?<pubDate>([^<]+)<\/pubDate>[\s\S]*?<source[^>]*>([^<]+)<\/source>/g;
-      let match;
-      while ((match = titleRegex.exec(xml)) !== null && items.length < 20) {
-        const title = match[1].trim();
-        const url   = match[2].trim();
-        const date  = new Date(match[3]).toISOString().slice(0,10);
-        const source= match[4].trim() || s.source;
-        if (title.length > 5) items.push({ title, url, source, date });
-      }
-    } catch(e) {
-      console.error("谷歌新闻抓取失败：", e.message);
-    }
+// ─── Kimi 搜索最新资讯 ───────────────────────────────────
+async function fetchNewsFromKimi() {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await fetch("https://api.moonshot.cn/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.KIMI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "moonshot-v1-8k",
+        max_tokens: 2000,
+        messages: [{
+          role: "user",
+          content: `今天是${today}，请列出最近7天内中国马拉松赛事的真实资讯，包括：报名开始、赛事公告、成绩发布等。
+
+每条资讯必须是真实存在的，不要编造。
+
+严格返回JSON数组，不要任何其他文字：
+[{"title":"资讯标题","source":"媒体来源","date":"YYYY-MM-DD","url":"原文链接或空字符串","summary":"50字以内摘要","category":"报名信息或赛事动态或成绩结果"}]
+
+返回5-10条，只返回最近真实发生的资讯。`
+        }],
+      }),
+    });
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || "[]";
+    const clean = text.replace(/```json|```/g, "").trim();
+    const start = clean.indexOf("["), end = clean.lastIndexOf("]");
+    if (start === -1) return [];
+    return JSON.parse(clean.slice(start, end + 1));
+  } catch(e) {
+    console.error("Kimi 搜索失败：", e.message);
+    return [];
   }
-  return items;
 }
 
 // ─── Kimi AI 审核 ─────────────────────────────────────────
@@ -134,17 +143,16 @@ export default async function handler(req, res) {
     const { newsTableId } = await getTableIds(token);
     const existingTitles = await getExistingTitles(token, newsTableId);
 
-    // 1. 抓取谷歌新闻
-    const googleItems = await fetchGoogleNews();
-    console.log(`谷歌新闻抓取：${googleItems.length} 条`);
+    // 1. Kimi 搜索最新资讯
+    const kimiItems = await fetchNewsFromKimi();
+    console.log(`Kimi 搜索：${kimiItems.length} 条`);
 
     // 2. 去重
-    const newItems = googleItems.filter(item => !existingTitles.has(item.title));
+    const newItems = kimiItems.filter(item => !existingTitles.has(item.title));
     console.log(`去重后：${newItems.length} 条新内容`);
 
-    // 3. Kimi AI 审核
-    const approved = await aiReview(newItems);
-    console.log(`AI审核通过：${approved.length} 条`);
+    // 3. 直接写入（Kimi 已判断相关性，跳过二次审核）
+    const approved = newItems;
 
     // 4. 写入飞书多维表格
     let written = 0;
@@ -164,7 +172,7 @@ export default async function handler(req, res) {
 
     res.status(200).json({
       success: true,
-      fetched: googleItems.length,
+      fetched: kimiItems.length,
       new: newItems.length,
       approved: approved.length,
       written,
