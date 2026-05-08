@@ -53,28 +53,33 @@ async function writeRecord(token, tableId, fields) {
   return data;
 }
 
-// ─── 抓取百度资讯 ─────────────────────────────────────────
-async function fetchBaiduNews() {
-  try {
-    const url = "https://www.baidu.com/s?rtt=1&bsst=1&cl=2&tn=news&ie=utf-8&word=%E9%A9%AC%E6%8B%89%E6%9D%BE";
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-    const res = await fetch(proxyUrl);
-    const json = await res.json();
-    const html = json.contents || "";
-    const items = [];
-    const regex = /<h3[^>]*class="[^"]*c-title[^"]*"[^>]*><a[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
-    let match;
-    while ((match = regex.exec(html)) !== null && items.length < 15) {
-      const title = match[2].replace(/<[^>]+>/g, "").trim();
-      if (title.length > 5) {
-        items.push({ title, url: match[1], source: "百度资讯", date: new Date().toISOString().slice(0, 10) });
+// ─── 抓取谷歌新闻 RSS ────────────────────────────────────
+async function fetchGoogleNews() {
+  const sources = [
+    { url:"https://news.google.com/rss/search?q=马拉松+报名&hl=zh-CN&gl=CN&ceid=CN:zh-Hans", source:"谷歌新闻" },
+    { url:"https://news.google.com/rss/search?q=马拉松+赛事&hl=zh-CN&gl=CN&ceid=CN:zh-Hans", source:"谷歌新闻" },
+  ];
+  const items = [];
+  for (const s of sources) {
+    try {
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(s.url)}`;
+      const res = await fetch(proxyUrl);
+      const json = await res.json();
+      const xml = json.contents || "";
+      const titleRegex = /<item>[\s\S]*?<title><!\[CDATA\[([^\]]+)\]\]><\/title>[\s\S]*?<link>([^<]+)<\/link>[\s\S]*?<pubDate>([^<]+)<\/pubDate>[\s\S]*?<source[^>]*>([^<]+)<\/source>/g;
+      let match;
+      while ((match = titleRegex.exec(xml)) !== null && items.length < 20) {
+        const title = match[1].trim();
+        const url   = match[2].trim();
+        const date  = new Date(match[3]).toISOString().slice(0,10);
+        const source= match[4].trim() || s.source;
+        if (title.length > 5) items.push({ title, url, source, date });
       }
+    } catch(e) {
+      console.error("谷歌新闻抓取失败：", e.message);
     }
-    return items;
-  } catch(e) {
-    console.error("百度抓取失败：", e.message);
-    return [];
   }
+  return items;
 }
 
 // ─── Kimi AI 审核 ─────────────────────────────────────────
@@ -129,12 +134,12 @@ export default async function handler(req, res) {
     const { newsTableId } = await getTableIds(token);
     const existingTitles = await getExistingTitles(token, newsTableId);
 
-    // 1. 抓取百度资讯
-    const baiduItems = await fetchBaiduNews();
-    console.log(`百度抓取：${baiduItems.length} 条`);
+    // 1. 抓取谷歌新闻
+    const googleItems = await fetchGoogleNews();
+    console.log(`谷歌新闻抓取：${googleItems.length} 条`);
 
     // 2. 去重
-    const newItems = baiduItems.filter(item => !existingTitles.has(item.title));
+    const newItems = googleItems.filter(item => !existingTitles.has(item.title));
     console.log(`去重后：${newItems.length} 条新内容`);
 
     // 3. Kimi AI 审核
@@ -159,7 +164,7 @@ export default async function handler(req, res) {
 
     res.status(200).json({
       success: true,
-      fetched: baiduItems.length,
+      fetched: googleItems.length,
       new: newItems.length,
       approved: approved.length,
       written,
