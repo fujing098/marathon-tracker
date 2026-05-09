@@ -253,7 +253,7 @@ function updateActiveTagsBar() {
 }
 
 function renderRaces() {
-  const list = allRaces.filter(r => {
+  const list = allRaces.filter(r => r["赛事名称"]).filter(r => {
     const d = parseDate(r["比赛日期"]);
     if (filters.type.length   && !filters.type.includes(r["赛事类型"]))           return false;
     if (filters.month.length  && !filters.month.includes(d ? d.getMonth()+1 : 0)) return false;
