@@ -72,7 +72,6 @@ async function kimiSearch(prompt) {
       body: JSON.stringify({
         model: "moonshot-v1-8k",
         max_tokens: 3000,
-        tools: [{ type: "builtin_function", function: { name: "$web_search" } }],
         messages: [{ role: "user", content: prompt }],
       }),
     });
