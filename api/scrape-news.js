@@ -56,43 +56,50 @@ function parseRaceType(text) {
 }
 
 function parseCategory(title) {
-  if (/报名|开启|截止|额满/.test(title)) return "报名信息";
+  if (/报名|开启|截止|额满|盲报/.test(title)) return "报名信息";
   if (/成绩|完赛|冠军|获奖/.test(title)) return "成绩结果";
   return "赛事动态";
 }
 
-// 抓取资讯列表页
 async function scrapeNewsPage(page) {
-  const url = page === 1 ? "https://zuicool.com/news" : `https://zuicool.com/news/page/${page}`;
-  console.log(`抓取资讯第${page}页...`);
+  // 使用报名分类页，数据更纯净
+  const url = page === 1
+    ? "https://zuicool.com/news/archives/category/reg"
+    : `https://zuicool.com/news/archives/category/reg/page/${page}`;
+  
+  console.log(`抓取资讯第${page}页: ${url}`);
   const res = await fetch(url, { headers: HEADERS });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const html = await res.text();
+  const text = await res.text();
 
   const items = [];
-  // 匹配格式：[标题 日期](链接)
-  const regex = /\[([^\]]+)\s+(\d{4}-\d{2}-\d{2})\]\((https:\/\/zuicool\.com\/news\/archives\/\d+)\)/g;
-  let match;
-  while ((match = regex.exec(html)) !== null) {
-    const title = match[1].trim();
-    const date  = match[2];
-    const url   = match[3];
-    if (!title || !date) continue;
-    items.push({ title, date, url });
+  // 格式：[标题 日期](链接) 其中标题可含特殊字符
+  // 用更宽松的正则，匹配到 archives/数字 结尾
+  const lines = text.split("\n");
+  for (const line of lines) {
+    // 匹配 [任意内容 YYYY-MM-DD](https://zuicool.com/news/archives/数字)
+    const m = line.match(/\[(.+?)\s+(\d{4}-\d{2}-\d{2})\]\((https:\/\/zuicool\.com\/news\/archives\/\d+)\)/);
+    if (m) {
+      const title = m[1].trim();
+      const date  = m[2];
+      const url   = m[3];
+      if (title && date && url) {
+        items.push({ title, date, url });
+      }
+    }
   }
+  
+  console.log(`第${page}页找到 ${items.length} 条`);
   return items;
 }
 
-// 抓取资讯详情页获取摘要
 async function scrapeNewsDetail(url) {
   try {
     const res = await fetch(url, { headers: HEADERS });
     if (!res.ok) return "";
     const html = await res.text();
-    // 提取 meta description 作为摘要
-    const descMatch = html.match(/<meta[^>]+name="description"[^>]+content="([^"]{10,200})"/i)
-                   || html.match(/<meta[^>]+content="([^"]{10,200})"[^>]+name="description"/i);
-    if (descMatch) return descMatch[1].slice(0, 100);
+    const descMatch = html.match(/meta-description:\s*(.+)/);
+    if (descMatch) return descMatch[1].trim().slice(0, 100);
     return "";
   } catch(e) {
     return "";
@@ -117,7 +124,7 @@ export default async function handler(req, res) {
       try {
         const items = await scrapeNewsPage(page);
         allItems = allItems.concat(items);
-        console.log(`第${page}页：${items.length} 条`);
+        if (items.length === 0) break; // 没有更多数据了
         await new Promise(r => setTimeout(r, 500));
       } catch(e) {
         console.error(`第${page}页失败：`, e.message);
@@ -134,7 +141,6 @@ export default async function handler(req, res) {
       if (!item.title || seenTitles.has(item.title)) { skipped++; continue; }
       seenTitles.add(item.title);
 
-      // 抓详情获取摘要
       const summary = await scrapeNewsDetail(item.url);
       await new Promise(r => setTimeout(r, 200));
 
