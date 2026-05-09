@@ -1,4 +1,3 @@
-
 const APP_TOKEN = "F1rmb1U2oaPqULsAtq5cqj7hnbh";
 
 async function getFeishuToken() {
@@ -135,31 +134,28 @@ export default async function handler(req, res) {
     const endYear = today.getFullYear();
     const endMonth = today.getMonth() + 1;
 
-    // 支持传参指定月份，不传则搜全部
     const paramYear = req.query.year ? parseInt(req.query.year) : null;
     const paramMonth = req.query.month ? parseInt(req.query.month) : null;
 
     let allItems = [];
 
     if (paramYear && paramMonth) {
-      // 只搜指定月份
+      console.log(`搜索 ${paramYear}年${paramMonth}月...`);
       const items = await searchByMonth(paramYear, paramMonth);
       allItems = items;
     } else {
       for (let y = 2026; y <= endYear; y++) {
         const mEnd = (y === endYear) ? endMonth : 12;
         for (let m = 1; m <= mEnd; m++) {
-
-        
-        console.log(`搜索 ${y}年${m}月...`);
-        const items = await searchByMonth(y, m);
-        allItems = allItems.concat(items);
-        await new Promise(r => setTimeout(r, 1000));
+          console.log(`搜索 ${y}年${m}月...`);
+          const items = await searchByMonth(y, m);
+          allItems = allItems.concat(items);
+          await new Promise(r => setTimeout(r, 1000));
+        }
       }
+      const wechatItems = await searchWechatHistory(accounts);
+      allItems = allItems.concat(wechatItems);
     }
-
-    const wechatItems = await searchWechatHistory(accounts);
-    allItems = allItems.concat(wechatItems);
     console.log(`总计抓取：${allItems.length} 条`);
 
     const seenTitles = new Set(existingTitles);
