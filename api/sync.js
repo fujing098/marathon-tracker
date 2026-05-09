@@ -63,32 +63,59 @@ async function writeRecord(token, tableId, fields) {
 async function kimiSearch(prompt) {
   try {
     console.log("调用 Kimi API...");
-    const res = await fetch("https://api.moonshot.cn/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.KIMI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "moonshot-v1-8k",
-        max_tokens: 3000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    const data = await res.json();
-    console.log("Kimi HTTP状态：", res.status);
-    console.log("Kimi 响应：", JSON.stringify(data).slice(0, 300));
-    const text = data.choices?.[0]?.message?.content || "[]";
-    console.log("Kimi 内容：", text.slice(0, 200));
-    const clean = text.replace(/```json|```/g, "").trim();
+    const messages = [{ role: "user", content: prompt }];
+
+    let finalText = "";
+    for (let i = 0; i < 5; i++) {
+      const res = await fetch("https://api.moonshot.cn/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.KIMI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "moonshot-v1-8k",
+          max_tokens: 3000,
+          tools: [{ type: "builtin_function", function: { name: "$web_search" } }],
+          messages,
+        }),
+      });
+      const data = await res.json();
+      console.log(`第${i+1}轮 HTTP状态：`, res.status);
+
+      const choice = data.choices?.[0];
+      if (!choice) { console.log("无 choices，退出"); break; }
+
+      const msg = choice.message;
+      messages.push(msg);
+
+      if (msg.tool_calls && msg.tool_calls.length > 0) {
+        console.log(`第${i+1}轮触发 tool_calls，继续...`);
+        for (const tc of msg.tool_calls) {
+          messages.push({
+            role: "tool",
+            tool_call_id: tc.id,
+            name: tc.function.name,
+            content: "",
+          });
+        }
+        continue;
+      }
+
+      finalText = msg.content || "";
+      console.log("最终内容：", finalText.slice(0, 200));
+      break;
+    }
+
+    const clean = finalText.replace(/```json|```/g, "").trim();
     const s = clean.indexOf("["), e = clean.lastIndexOf("]");
     if (s === -1) {
-      console.log("未找到 JSON 数组");
+      console.log("未找到 JSON 数组，内容：", finalText.slice(0, 100));
       return [];
     }
     try {
       const result = JSON.parse(clean.slice(s, e + 1));
-      console.log("Kimi 解析成功，条数：", result.length);
+      console.log("解析成功，条数：", result.length);
       return result;
     } catch(err) {
       console.error("JSON 解析失败：", err.message);
