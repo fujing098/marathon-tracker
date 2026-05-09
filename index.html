@@ -1,44 +1,355 @@
-const APP_TOKEN = "F1rmb1U2oaPqULsAtq5cqj7hnbh";
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>Keep 马拉松赛事追踪</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;background:#F5F5F7;min-height:100vh;}
+  .wrap{max-width:390px;margin:0 auto;}
+  .header{background:#fff;border-bottom:1px solid rgba(0,0,0,0.07);padding:14px 14px 0;}
+  .logo{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .logo-left{display:flex;align-items:center;gap:8px;}
+  .logo-icon{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#00C985,#A855F7);display:flex;align-items:center;justify-content:center;font-size:15px;}
+  .logo-title{font-size:14px;font-weight:500;color:#1A1A1A;}
+  .logo-sub{font-size:10px;color:#AAA;margin-top:1px;}
+  .filter-icon-btn{background:none;border:1px solid rgba(0,0,0,0.1);border-radius:8px;padding:5px 10px;font-size:12px;color:#666;cursor:pointer;display:flex;align-items:center;gap:4px;}
+  .filter-icon-btn.active{border-color:#00C985;color:#00C985;background:rgba(0,201,133,0.06);}
+  .tabs{display:flex;}
+  .tab{flex:1;padding:11px 0;font-size:13px;font-weight:400;color:#666;background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;transition:all 0.15s;}
+  .tab.active{color:#00C985;font-weight:500;border-bottom:2px solid #00C985;}
+  .filter-panel{background:#fff;border-bottom:1px solid rgba(0,0,0,0.07);padding:14px;display:none;}
+  .filter-panel.open{display:block;}
+  .filter-section{margin-bottom:12px;}
+  .filter-section:last-child{margin-bottom:0;}
+  .filter-label{font-size:11px;color:#AAA;font-weight:500;margin-bottom:8px;}
+  .filter-pills{display:flex;gap:6px;flex-wrap:wrap;}
+  .pill{font-size:12px;padding:5px 12px;border-radius:20px;cursor:pointer;border:1px solid rgba(0,0,0,0.08);background:#F5F5F7;color:#666;white-space:nowrap;transition:all 0.15s;}
+  .pill-type.active{border-color:#00C985;background:rgba(0,201,133,0.1);color:#00875A;}
+  .pill-month.active{border-color:#A855F7;background:rgba(168,85,247,0.1);color:#7C3AED;}
+  .pill-city.active{border-color:#3B82F6;background:rgba(59,130,246,0.1);color:#1D4ED8;}
+  .pill-status.active{border-color:#F59E0B;background:rgba(245,158,11,0.1);color:#B45309;}
+  .filter-actions{display:flex;gap:8px;margin-top:14px;}
+  .btn-clear{flex:1;padding:8px;border-radius:10px;border:1px solid rgba(0,0,0,0.08);background:transparent;color:#666;cursor:pointer;font-size:13px;}
+  .btn-apply{flex:1;padding:8px;border-radius:10px;border:none;background:#00C985;color:#fff;cursor:pointer;font-size:13px;font-weight:500;}
+  .active-filters{display:flex;gap:6px;padding:8px 14px;overflow-x:auto;background:#fff;border-bottom:1px solid rgba(0,0,0,0.05);}
+  .active-filters:empty{display:none;}
+  .active-tag{font-size:11px;padding:3px 8px;border-radius:20px;white-space:nowrap;}
+  .active-tag-type{background:rgba(0,201,133,0.1);color:#00875A;}
+  .active-tag-month{background:rgba(168,85,247,0.1);color:#7C3AED;}
+  .active-tag-city{background:rgba(59,130,246,0.1);color:#1D4ED8;}
+  .active-tag-status{background:rgba(245,158,11,0.1);color:#B45309;}
+  .content{padding:12px 12px 24px;}
+  .card-top{height:3px;background:linear-gradient(90deg,#00C985,#A855F7);}
+  .race-card{background:#fff;border:1px solid rgba(0,0,0,0.07);border-radius:14px;margin-bottom:10px;overflow:hidden;}
+  .race-body{padding:12px 14px;}
+  .race-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .race-badge{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:500;}
+  .badge-reg{background:rgba(0,201,133,0.1);color:#00875A;}
+  .badge-soon{background:rgba(168,85,247,0.1);color:#7C3AED;}
+  .badge-closed{background:rgba(239,68,68,0.1);color:#B91C1C;}
+  .race-name{font-size:15px;font-weight:500;color:#1A1A1A;margin-bottom:6px;}
+  .race-info{display:flex;gap:12px;font-size:12px;color:#666;margin-bottom:8px;flex-wrap:wrap;}
+  .race-type-tag{font-size:11px;padding:2px 8px;border-radius:20px;margin-bottom:8px;display:inline-block;}
+  .type-马拉松{background:rgba(0,201,133,0.08);color:#00875A;}
+  .type-越野赛{background:rgba(245,158,11,0.08);color:#B45309;}
+  .type-其他赛事{background:rgba(107,114,128,0.08);color:#4B5563;}
+  .race-meta{font-size:11px;color:#AAA;margin-bottom:4px;}
+  .news-card{background:#fff;border:1px solid rgba(0,0,0,0.07);border-radius:12px;padding:12px 14px;margin-bottom:8px;}
+  .news-title{font-size:13px;color:#1A1A1A;line-height:1.6;font-weight:500;margin-bottom:4px;}
+  .news-desc{font-size:12px;color:#666;line-height:1.5;margin-bottom:6px;}
+  .news-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;}
+  .news-source{font-size:11px;color:#AAA;background:#F5F5F7;padding:2px 8px;border-radius:20px;border:1px solid rgba(0,0,0,0.07);}
+  .news-date{font-size:11px;color:#AAA;}
+  .cat-tag{font-size:11px;padding:2px 8px;border-radius:20px;display:inline-block;margin-bottom:6px;}
+  .cat-报名信息{background:rgba(0,201,133,0.08);color:#00875A;}
+  .cat-赛事动态{background:rgba(250,173,20,0.08);color:#B45309;}
+  .cat-成绩结果{background:rgba(168,85,247,0.08);color:#7C3AED;}
+  .news-race-type{font-size:10px;padding:2px 6px;border-radius:20px;margin-left:4px;}
+  .loading{text-align:center;padding:2rem 0;color:#AAA;font-size:13px;}
+  .empty{text-align:center;padding:3rem 0;color:#AAA;font-size:13px;}
+  .result-count{font-size:12px;color:#AAA;padding:0 0 8px;text-align:right;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="logo">
+      <div class="logo-left">
+        <div class="logo-icon">🏃</div>
+        <div>
+          <div class="logo-title">Keep 赛事追踪</div>
+          <div class="logo-sub" id="subtitle">加载中...</div>
+        </div>
+      </div>
+      <button class="filter-icon-btn" id="filter-btn" onclick="toggleFilter()">
+        ⚙️ 筛选 <span id="filter-count"></span>
+      </button>
+    </div>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('races')">赛事</button>
+      <button class="tab" onclick="switchTab('feed')">最新消息</button>
+    </div>
+  </div>
 
-async function getFeishuToken() {
-  const res = await fetch("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      app_id: process.env.FEISHU_APP_ID,
-      app_secret: process.env.FEISHU_APP_SECRET,
-    }),
-  });
-  const data = await res.json();
-  if (data.code !== 0) throw new Error("获取飞书 Token 失败：" + data.msg);
-  return data.tenant_access_token;
+  <div class="filter-panel" id="filter-panel">
+    <div class="filter-section">
+      <div class="filter-label">赛事类型</div>
+      <div class="filter-pills">
+        <span class="pill pill-type" onclick="togglePill(this,'type','马拉松')">🏃 马拉松</span>
+        <span class="pill pill-type" onclick="togglePill(this,'type','越野赛')">🏔️ 越野赛</span>
+        <span class="pill pill-type" onclick="togglePill(this,'type','其他赛事')">🎯 其他赛事</span>
+      </div>
+    </div>
+    <div class="filter-section">
+      <div class="filter-label">比赛月份</div>
+      <div class="filter-pills" id="pills-month"></div>
+    </div>
+    <div class="filter-section">
+      <div class="filter-label">城市</div>
+      <div class="filter-pills" id="pills-city"></div>
+    </div>
+    <div class="filter-section">
+      <div class="filter-label">报名状态</div>
+      <div class="filter-pills">
+        <span class="pill pill-status" onclick="togglePill(this,'status','报名中')">报名中</span>
+        <span class="pill pill-status" onclick="togglePill(this,'status','即将报名')">即将报名</span>
+        <span class="pill pill-status" onclick="togglePill(this,'status','已截止')">已截止</span>
+      </div>
+    </div>
+    <div class="filter-actions">
+      <button class="btn-clear" onclick="clearFilters()">清除全部</button>
+      <button class="btn-apply" onclick="applyFilters()">查看结果</button>
+    </div>
+  </div>
+
+  <div class="active-filters" id="active-filters"></div>
+
+  <div id="tab-races" class="content">
+    <div class="result-count" id="race-count"></div>
+    <div id="race-list"><div class="loading">⏳ 加载赛事数据...</div></div>
+  </div>
+
+  <div id="tab-feed" class="content" style="display:none;">
+    <div class="result-count" id="feed-count"></div>
+    <div id="feed-list"><div class="loading">⏳ 加载资讯数据...</div></div>
+  </div>
+</div>
+
+<script>
+const filters = { type:[], month:[], city:[], status:[] };
+let currentTab = "races";
+let allRaces = [];
+let allNews = [];
+
+const daysLeft = d => d ? Math.ceil((new Date(d) - new Date()) / 86400000) : null;
+
+function parseDate(val) {
+  if (!val) return null;
+  if (typeof val === "number") return new Date(val);
+  return new Date(val);
 }
 
-export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  if (req.method === "OPTIONS") return res.status(200).end();
+function fmtDate(val) {
+  const d = parseDate(val);
+  if (!d || isNaN(d)) return "";
+  return d.toLocaleDateString("zh-CN");
+}
 
+function getStatusLabel(r) {
+  const regEnd   = r["报名截止"];
+  const regStart = r["报名开始"];
+  const dl = daysLeft(parseDate(regEnd));
+  if (dl !== null && dl >= 0) return "报名中";
+  if (dl !== null && dl < 0)  return "已截止";
+  if (regStart) return "即将报名";
+  return r["状态"] || "";
+}
+
+async function loadData() {
   try {
-    const token = await getFeishuToken();
+    const [racesRes, newsRes] = await Promise.all([
+      fetch("/api/races"),
+      fetch("/api/news")
+    ]);
+    const racesData = await racesRes.json();
+    const newsData  = await newsRes.json();
 
-    // 获取表格列表
-    const tablesRes = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${APP_TOKEN}/tables`, {
-      headers: { "Authorization": `Bearer ${token}` },
-    });
-    const tablesData = await tablesRes.json();
-    const tables = tablesData.data.items;
-    const raceTable = tables.find(t => t.name.includes("赛事信息"));
-    if (!raceTable) return res.status(200).json({ races: [] });
+    allRaces = racesData.races || [];
+    allNews  = newsData.news  || newsData.items || [];
 
-    // 读取赛事记录
-    const recordsRes = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${APP_TOKEN}/tables/${raceTable.table_id}/records?page_size=200`, {
-      headers: { "Authorization": `Bearer ${token}` },
-    });
-    const recordsData = await recordsRes.json();
-    const races = (recordsData.data.items || []).map(r => r.fields);
-
-    res.status(200).json({ races });
+    document.getElementById("subtitle").textContent = `共 ${allRaces.length} 场赛事`;
+    buildCityPills();
+    buildMonthPills();
+    renderRaces();
+    renderFeed();
   } catch(e) {
-    res.status(500).json({ error: e.message });
+    document.getElementById("race-list").innerHTML = `<div class="empty">⚠️ 数据加载失败：${e.message}</div>`;
+    document.getElementById("feed-list").innerHTML = `<div class="empty">⚠️ 数据加载失败</div>`;
   }
 }
+
+function buildCityPills() {
+  const cities = [...new Set(allRaces.map(r => r["城市"]).filter(Boolean))];
+  document.getElementById("pills-city").innerHTML = cities.map(c =>
+    `<span class="pill pill-city" onclick="togglePill(this,'city','${c}')">${c}</span>`
+  ).join("");
+}
+
+function buildMonthPills() {
+  const months = [...new Set(allRaces.map(r => {
+    const d = parseDate(r["比赛日期"]);
+    return d ? d.getMonth() + 1 : null;
+  }).filter(Boolean))].sort((a,b) => a-b);
+  document.getElementById("pills-month").innerHTML = months.map(m =>
+    `<span class="pill pill-month" onclick="togglePill(this,'month',${m})">${m}月</span>`
+  ).join("");
+}
+
+function toggleFilter() {
+  const panel = document.getElementById("filter-panel");
+  const btn   = document.getElementById("filter-btn");
+  panel.classList.toggle("open");
+  btn.classList.toggle("active", panel.classList.contains("open"));
+}
+
+function togglePill(el, type, val) {
+  const idx = filters[type].indexOf(val);
+  if (idx > -1) { filters[type].splice(idx, 1); el.classList.remove("active"); }
+  else           { filters[type].push(val);      el.classList.add("active"); }
+}
+
+function clearFilters() {
+  ["type","month","city","status"].forEach(t => {
+    filters[t] = [];
+    document.querySelectorAll(`.pill-${t}`).forEach(p => p.classList.remove("active"));
+  });
+  applyFilters();
+}
+
+function applyFilters() {
+  document.getElementById("filter-panel").classList.remove("open");
+  document.getElementById("filter-btn").classList.remove("active");
+  updateActiveTagsBar();
+  updateFilterCount();
+  if (currentTab === "races") renderRaces();
+  else renderFeed();
+}
+
+function updateFilterCount() {
+  const cnt = filters.type.length + filters.month.length + filters.city.length + filters.status.length;
+  document.getElementById("filter-count").textContent = cnt > 0 ? `(${cnt})` : "";
+  document.getElementById("filter-btn").classList.toggle("active", cnt > 0);
+}
+
+function updateActiveTagsBar() {
+  document.getElementById("active-filters").innerHTML = [
+    ...filters.type.map(v   => `<span class="active-tag active-tag-type">🏃 ${v}</span>`),
+    ...filters.month.map(v  => `<span class="active-tag active-tag-month">${v}月</span>`),
+    ...filters.city.map(v   => `<span class="active-tag active-tag-city">📍 ${v}</span>`),
+    ...filters.status.map(v => `<span class="active-tag active-tag-status">${v}</span>`),
+  ].join("");
+}
+
+function renderRaces() {
+  const list = allRaces.filter(r => {
+    const d = parseDate(r["比赛日期"]);
+    if (filters.type.length   && !filters.type.includes(r["赛事类型"]))           return false;
+    if (filters.month.length  && !filters.month.includes(d ? d.getMonth()+1 : 0)) return false;
+    if (filters.city.length   && !filters.city.includes(r["城市"]))               return false;
+    if (filters.status.length && !filters.status.includes(getStatusLabel(r)))     return false;
+    return true;
+  });
+
+  document.getElementById("race-count").textContent = `共 ${list.length} 场赛事`;
+  const el = document.getElementById("race-list");
+  if (!list.length) { el.innerHTML = '<div class="empty">🔍 暂无符合条件的赛事</div>'; return; }
+
+  el.innerHTML = list.map(r => {
+    const name     = r["赛事名称"] || "未知赛事";
+    const city     = r["城市"] || "";
+    const date     = fmtDate(r["比赛日期"]);
+    const raceType = r["赛事类型"] || "马拉松";
+    const scale    = r["赛事规模"] ? `${Number(r["赛事规模"]).toLocaleString()}人` : "";
+    const official = r["官网地址"]?.link || r["官网地址"] || "";
+    const regEnd   = parseDate(r["报名截止"]);
+    const regStart = parseDate(r["报名开始"]);
+    const dl       = daysLeft(regEnd);
+    const rs       = regStart ? Math.ceil((regStart - new Date()) / 86400000) : null;
+
+    let badge = "";
+    if (dl !== null && dl >= 0)      badge = `<span class="race-badge badge-reg">报名还剩 ${dl} 天</span>`;
+    else if (dl !== null && dl < 0)  badge = `<span class="race-badge badge-closed">报名已截止</span>`;
+    else if (rs !== null && rs > 0)  badge = `<span class="race-badge badge-soon">${rs} 天后开报名</span>`;
+
+    return `
+    <div class="race-card">
+      <div class="card-top"></div>
+      <div class="race-body">
+        <div class="race-header"><span></span>${badge}</div>
+        <span class="race-type-tag type-${raceType}">${raceType}</span>
+        <div class="race-name">${name}</div>
+        <div class="race-info">
+          ${city ? `<span>📍 ${city}</span>` : ""}
+          ${date ? `<span>📅 ${date}</span>` : ""}
+          ${scale ? `<span>👥 ${scale}</span>` : ""}
+        </div>
+        ${regStart ? `<div class="race-meta">报名开始：${fmtDate(r["报名开始"])}</div>` : ""}
+        ${regEnd   ? `<div class="race-meta">报名截止：${fmtDate(r["报名截止"])}</div>` : ""}
+        ${official ? `<a href="${official}" target="_blank" style="font-size:12px;color:#00C985;text-decoration:none;">🔗 官网报名</a>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function renderFeed() {
+  const list = allNews.filter(n => {
+    const rt = n["赛事类型"] || n.raceType || "马拉松";
+    const d  = parseDate(n["发布日期"] || n.date);
+    if (filters.type.length  && !filters.type.includes(rt))                      return false;
+    if (filters.month.length && !filters.month.includes(d ? d.getMonth()+1 : 0)) return false;
+    return true;
+  });
+
+  document.getElementById("feed-count").textContent = list.length ? `共 ${list.length} 条资讯` : "";
+  const el = document.getElementById("feed-list");
+  if (!list.length) { el.innerHTML = '<div class="empty">🔍 暂无资讯</div>'; return; }
+
+  el.innerHTML = list.map(n => {
+    const title    = n["标题"]  || n.title   || "";
+    const source   = n["来源"]  || n.source  || "";
+    const summary  = n["摘要"]  || n.summary || "";
+    const category = n["分类"]  || n.category || "";
+    const raceType = n["赛事类型"] || n.raceType || "";
+    const url      = n["链接"]?.link || n["链接"] || n.url || "";
+    const date     = fmtDate(n["发布日期"] || n.date);
+
+    return `
+    <div class="news-card">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+        ${category ? `<span class="cat-tag cat-${category}">${category}</span>` : ""}
+        ${raceType ? `<span class="news-race-type type-${raceType}">${raceType}</span>` : ""}
+      </div>
+      ${url ? `<a href="${url}" target="_blank" style="text-decoration:none;"><div class="news-title">${title}</div></a>` : `<div class="news-title">${title}</div>`}
+      ${summary ? `<div class="news-desc">${summary}</div>` : ""}
+      <div class="news-footer">
+        <span class="news-source">${source}</span>
+        <span class="news-date">${date}</span>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById("tab-races").style.display = tab === "races" ? "block" : "none";
+  document.getElementById("tab-feed").style.display  = tab === "feed"  ? "block" : "none";
+  document.querySelectorAll(".tab")[0].classList.toggle("active", tab === "races");
+  document.querySelectorAll(".tab")[1].classList.toggle("active", tab === "feed");
+}
+
+loadData();
+</script>
+</body>
+</html>
