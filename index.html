@@ -190,14 +190,19 @@ function extractKeywords(name) {
     .slice(0, 8);                     // 取前8字作为关键词
 }
 
+// 统一取资讯字段（兼容中文和英文字段名）
+function newsField(n, cn, en) {
+  return n[cn] || n[en] || "";
+}
+
 // 找出某场赛事对应的资讯（标题包含赛事关键词）
 function getRelatedNews(raceName) {
   const kw = extractKeywords(raceName);
   if (!kw || kw.length < 2) return [];
   return allNews.filter(n => {
-    const title = n["标题"] || "";
+    const title = newsField(n, "标题", "title");
     return title.includes(kw);
-  }).slice(0, 3); // 最多显示3条
+  }).slice(0, 3);
 }
 
 async function loadData() {
@@ -322,10 +327,11 @@ function renderRaces() {
       <div class="race-news">
         <div class="race-news-title">相关资讯</div>
         ${related.map(n => {
-          const nUrl  = n["链接"]?.link || n["链接"] || "";
-          const nTitle = n["标题"] || "";
-          const nCat  = n["分类"] || "";
-          const nDate = fmtDate(n["发布日期"]);
+          const nUrlRaw = newsField(n, "链接", "url");
+          const nUrl    = nUrlRaw?.link || nUrlRaw || "";
+          const nTitle = newsField(n, "标题", "title");
+          const nCat   = newsField(n, "分类", "category");
+          const nDate  = fmtDate(newsField(n, "发布日期", "date"));
           return `
           <div class="race-news-item">
             <div class="race-news-dot"></div>
@@ -377,13 +383,14 @@ function renderFeed() {
   if (!list.length) { el.innerHTML = '<div class="empty">🔍 暂无资讯</div>'; return; }
 
   el.innerHTML = list.map(n => {
-    const title    = n["标题"]  || n.title   || "";
-    const source   = n["来源"]  || n.source  || "";
-    const summary  = n["摘要"]  || n.summary || "";
-    const category = n["分类"]  || n.category || "";
-    const raceType = n["赛事类型"] || n.raceType || "";
-    const url      = n["链接"]?.link || n["链接"] || n.url || "";
-    const date     = fmtDate(n["发布日期"] || n.date);
+    const title    = newsField(n, "标题", "title");
+    const source   = newsField(n, "来源", "source");
+    const summary  = newsField(n, "摘要", "summary");
+    const category = newsField(n, "分类", "category");
+    const raceType = newsField(n, "赛事类型", "raceType");
+    const urlRaw   = newsField(n, "链接", "url");
+    const url      = urlRaw?.link || urlRaw || "";
+    const date     = fmtDate(newsField(n, "发布日期", "date"));
 
     return `
     <div class="news-card">
