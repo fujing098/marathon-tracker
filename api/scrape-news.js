@@ -21,6 +21,7 @@ async function getTableIds(token) {
   const data = await res.json();
   if (data.code !== 0) throw new Error("获取表格列表失败");
   const tables = data.data.items;
+  console.log("所有表格：", tables.map(t => t.name + "=" + t.table_id).join(", "));
   return {
     raceTableId: tables.find(t => t.name.includes("赛事信息"))?.table_id,
     newsTableId: tables.find(t => t.name.includes("推文"))?.table_id || tables[0]?.table_id,
@@ -65,22 +66,17 @@ function parseCategory(title) {
   return "赛事动态";
 }
 
-// 修复：从地点字符串提取城市
-// zuicool 地点格式：省 市 区 详细地址（空格分隔）
 function parseCityFromLocation(loc) {
   if (!loc) return "";
   const parts = loc.trim().split(/\s+/).filter(Boolean);
-  // 第一段通常是省，第二段是市
   if (parts.length >= 2) return parts[1];
   if (parts.length === 1) return parts[0];
   return "";
 }
 
-// 修复：从 meta keywords 提取城市（keywords 格式：马拉松,越野,北京,朝阳区,...）
 function parseCityFromKeywords(keywords) {
   if (!keywords) return "";
   const parts = keywords.split(",").map(s => s.trim()).filter(Boolean);
-  // 跳过通用词，找第一个像城市名的词（2-4字，不含赛事关键词）
   const skip = /马拉松|越野|报名|成绩|跑步|点评|赛事|铁人|骑行|徒步|公里|全程|半程/;
   for (const p of parts) {
     if (p.length >= 2 && p.length <= 5 && !skip.test(p)) return p;
@@ -88,30 +84,21 @@ function parseCityFromKeywords(keywords) {
   return "";
 }
 
-// 从 meta description 提取赛事详情
 function parseDetailFromMeta(desc, year) {
   const result = {};
-  // 赛事规模
   const scaleMatch = desc.match(/规模(\d+)人/);
   if (scaleMatch) result.scale = parseInt(scaleMatch[1]);
 
-  // 比赛日期：支持"6月16日"、"06月16日"
   const dateMatch = desc.match(/(\d{1,2})月(\d{1,2})日/);
   if (dateMatch) {
     result.raceDate = `${year}-${dateMatch[1].padStart(2, "0")}-${dateMatch[2].padStart(2, "0")}`;
   }
 
-  // 报名开始：匹配"即日起"或"X月X日开放报名/开启报名"
-  if (/即日起/.test(desc)) {
-    // 即日起无法精确，不填
-  } else {
-    const regStartMatch = desc.match(/(\d{1,2})月(\d{1,2})日[^。\n]{0,15}开[放启]?报名/);
-    if (regStartMatch) {
-      result.regStart = `${year}-${regStartMatch[1].padStart(2, "0")}-${regStartMatch[2].padStart(2, "0")}`;
-    }
+  const regStartMatch = desc.match(/(\d{1,2})月(\d{1,2})日[^。\n]{0,15}开[放启]?报名/);
+  if (regStartMatch) {
+    result.regStart = `${year}-${regStartMatch[1].padStart(2, "0")}-${regStartMatch[2].padStart(2, "0")}`;
   }
 
-  // 报名截止：匹配"至X月X日"或"X月X日截止"
   const regEndMatch = desc.match(/至(\d{1,2})月(\d{1,2})日[^。\n]{0,5}(?:截止|结束|报名)/);
   if (regEndMatch) {
     result.regEnd = `${year}-${regEndMatch[1].padStart(2, "0")}-${regEndMatch[2].padStart(2, "0")}`;
@@ -120,7 +107,6 @@ function parseDetailFromMeta(desc, year) {
   return result;
 }
 
-// 抓赛事详情页
 async function scrapeDetail(id, name) {
   try {
     const res = await fetch(`https://zuicool.com/event/${id}`, { headers: HEADERS });
@@ -139,7 +125,6 @@ async function scrapeDetail(id, name) {
     const year = yearMatch ? `20${yearMatch[1]}` : "2026";
 
     const detail = parseDetailFromMeta(desc, year);
-    // 优先用 keywords 提取城市，备用 description
     detail.city = parseCityFromKeywords(keywords);
     detail.summary = desc.slice(0, 150);
     return detail;
@@ -161,23 +146,19 @@ async function scrapeEventNews(id, raceName) {
     const xml = await res.text();
 
     const items = [];
-    // 匹配 RSS <item> 块
     const itemRegex = /<item>([\s\S]*?)<\/item>/g;
     let m;
     while ((m = itemRegex.exec(xml)) !== null) {
       const block = m[1];
 
-      // 标题
       const titleM = block.match(/<title><!\[CDATA\[([^\]]+)\]\]><\/title>/)
                   || block.match(/<title>([^<]+)<\/title>/);
       const title = titleM ? titleM[1].trim() : "";
 
-      // 链接
       const linkM = block.match(/<link>([^<]+)<\/link>/)
                  || block.match(/<guid[^>]*>([^<]+)<\/guid>/);
       const url = linkM ? linkM[1].trim() : "";
 
-      // 日期：<pubDate>Tue, 28 Apr 2026 06:00:00 +0000</pubDate>
       const dateM = block.match(/<pubDate>([^<]+)<\/pubDate>/);
       let date = new Date().toISOString().slice(0, 10);
       if (dateM) {
@@ -185,9 +166,7 @@ async function scrapeEventNews(id, raceName) {
         if (!isNaN(parsed)) date = parsed.toISOString().slice(0, 10);
       }
 
-      if (title && url) {
-        items.push({ title, date, url });
-      }
+      if (title && url) items.push({ title, date, url });
     }
 
     console.log(`[news] event${id} RSS 解析到 ${items.length} 条`);
@@ -217,17 +196,14 @@ async function scrapePage(page) {
 
     const ctx = html.slice(match.index, match.index + 600);
 
-    // 提取列表页日期：2026.05.10
     const dateM = ctx.match(/(\d{4})\.(\d{2})\.(\d{2})/);
     const raceDate = dateM ? `${dateM[1]}-${dateM[2]}-${dateM[3]}` : null;
 
-    // 提取列表页报名截止：报名截止：05-18（修复：直接拼完整日期）
     const regEndM = ctx.match(/报名截止[：:]\s*(\d{2}-\d{2})/);
     const regEnd = (regEndM && raceDate)
       ? `${raceDate.slice(0, 4)}-${regEndM[1]}`
       : null;
 
-    // 提取地点：2026.05.10 · 新疆 哈密市 ...
     const locM = ctx.match(/\d{4}\.\d{2}\.\d{2}\s*·\s*([^\n<·]{2,50})/);
     const loc  = locM ? locM[1].trim() : "";
     const city = parseCityFromLocation(loc);
@@ -244,13 +220,18 @@ export default async function handler(req, res) {
   try {
     const maxPages = parseInt(req.query.pages || "1");
     const newsOnly = req.query.newsonly === "1";
-    const limit    = parseInt(req.query.limit || "0"); // 0 = 不限制
+    const limit    = parseInt(req.query.limit || "0");
+
     const token = await getFeishuToken();
     const { raceTableId, newsTableId } = await getTableIds(token);
+    console.log(`raceTableId: ${raceTableId}, newsTableId: ${newsTableId}`);
+
     if (!raceTableId) return res.status(400).json({ error: "找不到赛事信息表" });
+    if (!newsTableId) return res.status(400).json({ error: "找不到推文资讯表" });
 
     const existingRaces = await getExisting(token, raceTableId, "赛事名称");
     const existingNews  = await getExisting(token, newsTableId, "标题");
+    console.log(`已有资讯：${existingNews.size} 条`);
 
     let allRaces = [];
     for (let page = 1; page <= maxPages; page++) {
@@ -269,24 +250,20 @@ export default async function handler(req, res) {
     const seenRaces = new Set(existingRaces);
     const seenNews  = new Set(existingNews);
 
-    // 支持 limit 参数，限制本次处理条数，避免超时
     const racesToProcess = limit > 0 ? allRaces.slice(0, limit) : allRaces;
     console.log(`本次处理：${racesToProcess.length} 场`);
 
     for (const race of racesToProcess) {
       if (!race.name) continue;
 
-      // newsonly 模式下跳过详情页请求，节省时间
       const detail = newsOnly ? {} : await scrapeDetail(race.id, race.name);
       if (!newsOnly) await new Promise(r => setTimeout(r, 300));
 
-      // 写入赛事（仅新赛事）
       if (!newsOnly && !seenRaces.has(race.name)) {
         seenRaces.add(race.name);
         try {
           const rd = detail.raceDate || race.raceDate;
           const rs = detail.regStart || null;
-          // 优先用详情页的报名截止，备用列表页
           const re = detail.regEnd || race.regEnd || null;
           const city = detail.city || race.city || "";
 
@@ -312,7 +289,6 @@ export default async function handler(req, res) {
         skippedRaces++;
       }
 
-      // 抓并写入该赛事的资讯
       const newsItems = await scrapeEventNews(race.id, race.name);
       await new Promise(r => setTimeout(r, 300));
 
@@ -320,6 +296,7 @@ export default async function handler(req, res) {
         if (seenNews.has(item.title)) { skippedNews++; continue; }
         seenNews.add(item.title);
         try {
+          console.log(`写入资讯：${item.title}`);
           await writeRecord(token, newsTableId, {
             "标题":     item.title,
             "来源":     "最酷马拉松",
