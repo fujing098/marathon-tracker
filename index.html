@@ -56,6 +56,19 @@
   .type-越野赛{background:rgba(245,158,11,0.08);color:#B45309;}
   .type-其他赛事{background:rgba(107,114,128,0.08);color:#4B5563;}
   .race-meta{font-size:11px;color:#AAA;margin-bottom:4px;}
+
+  /* 关联资讯区域 */
+  .race-news{border-top:1px solid rgba(0,0,0,0.06);margin-top:10px;padding-top:10px;}
+  .race-news-title{font-size:11px;color:#AAA;font-weight:500;margin-bottom:8px;}
+  .race-news-item{display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid rgba(0,0,0,0.04);}
+  .race-news-item:last-child{border-bottom:none;padding-bottom:0;}
+  .race-news-dot{width:4px;height:4px;border-radius:50%;background:#00C985;margin-top:6px;flex-shrink:0;}
+  .race-news-content{flex:1;min-width:0;}
+  .race-news-name{font-size:12px;color:#1A1A1A;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .race-news-meta{display:flex;align-items:center;gap:6px;margin-top:2px;}
+  .race-news-cat{font-size:10px;padding:1px 6px;border-radius:10px;}
+  .race-news-date{font-size:10px;color:#AAA;}
+
   .news-card{background:#fff;border:1px solid rgba(0,0,0,0.07);border-radius:12px;padding:12px 14px;margin-bottom:8px;}
   .news-title{font-size:13px;color:#1A1A1A;line-height:1.6;font-weight:500;margin-bottom:4px;}
   .news-desc{font-size:12px;color:#666;line-height:1.5;margin-bottom:6px;}
@@ -165,6 +178,26 @@ function getStatusLabel(r) {
   if (dl !== null && dl < 0)  return "已截止";
   if (regStart) return "即将报名";
   return r["状态"] || "";
+}
+
+// 从赛事名称提取关键词：去掉年份和通用词，取最有辨识度的部分
+function extractKeywords(name) {
+  return name
+    .replace(/^\d{4}/, "")           // 去掉开头年份
+    .replace(/马拉松|越野赛|越野|半程|全程|公里|国际|挑战赛|山径赛|超级|系列赛/g, "")
+    .replace(/[()（）·\-\s]/g, "")
+    .trim()
+    .slice(0, 8);                     // 取前8字作为关键词
+}
+
+// 找出某场赛事对应的资讯（标题包含赛事关键词）
+function getRelatedNews(raceName) {
+  const kw = extractKeywords(raceName);
+  if (!kw || kw.length < 2) return [];
+  return allNews.filter(n => {
+    const title = n["标题"] || "";
+    return title.includes(kw);
+  }).slice(0, 3); // 最多显示3条
 }
 
 async function loadData() {
@@ -283,6 +316,32 @@ function renderRaces() {
     else if (dl !== null && dl < 0)  badge = `<span class="race-badge badge-closed">报名已截止</span>`;
     else if (rs !== null && rs > 0)  badge = `<span class="race-badge badge-soon">${rs} 天后开报名</span>`;
 
+    // 关联资讯
+    const related = getRelatedNews(name);
+    const newsHtml = related.length ? `
+      <div class="race-news">
+        <div class="race-news-title">相关资讯</div>
+        ${related.map(n => {
+          const nUrl  = n["链接"]?.link || n["链接"] || "";
+          const nTitle = n["标题"] || "";
+          const nCat  = n["分类"] || "";
+          const nDate = fmtDate(n["发布日期"]);
+          return `
+          <div class="race-news-item">
+            <div class="race-news-dot"></div>
+            <div class="race-news-content">
+              ${nUrl
+                ? `<a href="${nUrl}" target="_blank" style="text-decoration:none;"><div class="race-news-name">${nTitle}</div></a>`
+                : `<div class="race-news-name">${nTitle}</div>`}
+              <div class="race-news-meta">
+                ${nCat ? `<span class="race-news-cat cat-${nCat}">${nCat}</span>` : ""}
+                <span class="race-news-date">${nDate}</span>
+              </div>
+            </div>
+          </div>`;
+        }).join("")}
+      </div>` : "";
+
     return `
     <div class="race-card">
       <div class="card-top"></div>
@@ -298,6 +357,7 @@ function renderRaces() {
         ${regStart ? `<div class="race-meta">报名开始：${fmtDate(r["报名开始"])}</div>` : ""}
         ${regEnd   ? `<div class="race-meta">报名截止：${fmtDate(r["报名截止"])}</div>` : ""}
         ${official ? `<a href="${official}" target="_blank" style="font-size:12px;color:#00C985;text-decoration:none;">🔗 官网报名</a>` : ""}
+        ${newsHtml}
       </div>
     </div>`;
   }).join("");
