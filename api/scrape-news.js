@@ -107,6 +107,20 @@ function parseDetailFromMeta(desc, year) {
   return result;
 }
 
+function decodeHtmlEntities(str) {
+  return str
+    .replace(/&#124;/g, "|")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#8220;/g, "\u201c")
+    .replace(/&#8221;/g, "\u201d")
+    .replace(/&#8243;/g, '"')
+    .replace(/&#\d+;/g, "")
+    .trim();
+}
+
 async function scrapeDetail(id, name) {
   try {
     const res = await fetch(`https://zuicool.com/event/${id}`, { headers: HEADERS });
@@ -134,7 +148,6 @@ async function scrapeDetail(id, name) {
   }
 }
 
-// 通过 RSS feed 抓取赛事资讯，结构固定，标题/链接/日期都有
 async function scrapeEventNews(id, raceName) {
   try {
     const feedUrl = `https://zuicool.com/news/archives/tag/event${id}/feed`;
@@ -153,7 +166,7 @@ async function scrapeEventNews(id, raceName) {
 
       const titleM = block.match(/<title><!\[CDATA\[([^\]]+)\]\]><\/title>/)
                   || block.match(/<title>([^<]+)<\/title>/);
-      const title = titleM ? titleM[1].trim() : "";
+      const title = titleM ? decodeHtmlEntities(titleM[1]) : "";
 
       const linkM = block.match(/<link>([^<]+)<\/link>/)
                  || block.match(/<guid[^>]*>([^<]+)<\/guid>/);
@@ -231,7 +244,7 @@ export default async function handler(req, res) {
 
     const existingRaces = await getExisting(token, raceTableId, "赛事名称");
     const existingNews  = await getExisting(token, newsTableId, "标题");
-    console.log(`已有资讯：${existingNews.size} 条`);
+    console.log(`已有赛事：${existingRaces.size} 条，已有资讯：${existingNews.size} 条`);
 
     let allRaces = [];
     for (let page = 1; page <= maxPages; page++) {
