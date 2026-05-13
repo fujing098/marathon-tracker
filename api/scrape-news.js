@@ -150,43 +150,53 @@ async function scrapeDetail(id, name) {
 }
 
 // 抓赛事专属资讯标签页
-// ⚠️ 目前加了调试日志，首次运行后去 Vercel Logs 查看原始 HTML，再确认正则
+// zuicool 标签页会直接跳转到该标签下最新一篇文章
+// 策略：从落地页的 <title> 提取标题，res.url 获取真实链接，meta 推断日期
 async function scrapeEventNews(id, raceName) {
   try {
-    const url = `https://zuicool.com/news/archives/tag/event${id}`;
-    const res = await fetch(url, { headers: HEADERS });
+    const tagUrl = `https://zuicool.com/news/archives/tag/event${id}`;
+    const res = await fetch(tagUrl, { headers: HEADERS });
     if (!res.ok) {
       console.log(`[news] event${id} HTTP ${res.status}`);
       return [];
     }
+
+    const finalUrl = res.url || tagUrl;
     const html = await res.text();
 
-    // === 调试：打印前2000字，部署后去 Vercel Logs 查看 ===
-    console.log(`=== [news] event${id} (${raceName}) HTML前2000字 ===`);
-    console.log(html.slice(0, 2000));
-    console.log(`=== end ===`);
+    // 从 <title> 提取文章标题，去掉末尾网站名
+    const titleMatch = html.match(/<title>([^<]+)<\/title>/);
+    const rawTitle = titleMatch ? titleMatch[1].trim() : "";
+    const title = rawTitle.replace(/\s*[-–|｜]\s*最酷.*$/i, "").trim();
 
-    const items = [];
-
-    // 方案A：匹配 <a href="...news/archives/数字">标题</a> + 附近日期
-    // 格式推测：<a href="https://zuicool.com/news/archives/299247">报名 | 2026乌兰察布马拉松...</a>
-    const linkRegex = /<a[^>]+href="(https:\/\/zuicool\.com\/news\/archives\/(\d+))"[^>]*>\s*([^<]{5,80})\s*<\/a>/g;
-    let m;
-    while ((m = linkRegex.exec(html)) !== null) {
-      const newsUrl = m[1];
-      const title   = m[3].replace(/\s+/g, " ").trim();
-      if (!title || title.length < 4) continue;
-
-      // 在链接前后200字符内找日期
-      const ctx = html.slice(Math.max(0, m.index - 100), m.index + 300);
-      const dateM = ctx.match(/(\d{4}-\d{2}-\d{2})/);
-      const date  = dateM ? dateM[1] : null;
-
-      if (title && date) items.push({ title, date, url: newsUrl });
+    // 无效页面（无标题、标题太短、或是网站首页）直接跳过
+    if (!title || title.length < 4) {
+      console.log(`[news] event${id} 无有效标题，跳过`);
+      return [];
     }
 
-    console.log(`[news] event${id} 解析到 ${items.length} 条资讯`);
-    return items;
+    // 确认落地 URL 是具体文章页（/news/archives/数字）
+    const isArticlePage = /news\/archives\/\d+/.test(finalUrl);
+    const newsUrl = isArticlePage ? finalUrl : tagUrl;
+
+    // 从 meta keywords 第一段（文章标题）里找日期
+    const kwMatch = html.match(/<meta[^>]+name="keywords"[^>]+content="([^"]+)"/i)
+                 || html.match(/<meta[^>]+content="([^"]+)"[^>]+name="keywords"/i);
+    const kwText = kwMatch ? kwMatch[1] : "";
+
+    // 优先匹配 YYYY-MM-DD，其次匹配 X月X日
+    let date = new Date().toISOString().slice(0, 10); // 兜底用今天
+    const isoDate = kwText.match(/(\d{4}-\d{2}-\d{2})/);
+    const cnDate  = kwText.match(/(\d{1,2})月(\d{1,2})日/);
+    if (isoDate) {
+      date = isoDate[1];
+    } else if (cnDate) {
+      const year = new Date().getFullYear();
+      date = `${year}-${cnDate[1].padStart(2, "0")}-${cnDate[2].padStart(2, "0")}`;
+    }
+
+    console.log(`[news] event${id} 提取到：${title} | ${date} | ${newsUrl}`);
+    return [{ title, date, url: newsUrl }];
   } catch (e) {
     console.error(`[news] event${id} 抓取异常：`, e.message);
     return [];
