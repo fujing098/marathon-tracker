@@ -149,56 +149,51 @@ async function scrapeDetail(id, name) {
   }
 }
 
-// 抓赛事专属资讯标签页
-// zuicool 标签页会直接跳转到该标签下最新一篇文章
-// 策略：从落地页的 <title> 提取标题，res.url 获取真实链接，meta 推断日期
+// 通过 RSS feed 抓取赛事资讯，结构固定，标题/链接/日期都有
 async function scrapeEventNews(id, raceName) {
   try {
-    const tagUrl = `https://zuicool.com/news/archives/tag/event${id}`;
-    const res = await fetch(tagUrl, { headers: HEADERS });
+    const feedUrl = `https://zuicool.com/news/archives/tag/event${id}/feed`;
+    const res = await fetch(feedUrl, { headers: HEADERS });
     if (!res.ok) {
-      console.log(`[news] event${id} HTTP ${res.status}`);
+      console.log(`[news] event${id} feed HTTP ${res.status}`);
       return [];
     }
+    const xml = await res.text();
 
-    const finalUrl = res.url || tagUrl;
-    const html = await res.text();
+    const items = [];
+    // 匹配 RSS <item> 块
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    let m;
+    while ((m = itemRegex.exec(xml)) !== null) {
+      const block = m[1];
 
-    // 从 <title> 提取文章标题，去掉末尾网站名
-    const titleMatch = html.match(/<title>([^<]+)<\/title>/);
-    const rawTitle = titleMatch ? titleMatch[1].trim() : "";
-    const title = rawTitle.replace(/\s*[-–|｜]\s*最酷.*$/i, "").trim();
+      // 标题
+      const titleM = block.match(/<title><!\[CDATA\[([^\]]+)\]\]><\/title>/)
+                  || block.match(/<title>([^<]+)<\/title>/);
+      const title = titleM ? titleM[1].trim() : "";
 
-    // 无效页面（无标题、标题太短、或是网站首页）直接跳过
-    if (!title || title.length < 4) {
-      console.log(`[news] event${id} 无有效标题，跳过`);
-      return [];
+      // 链接
+      const linkM = block.match(/<link>([^<]+)<\/link>/)
+                 || block.match(/<guid[^>]*>([^<]+)<\/guid>/);
+      const url = linkM ? linkM[1].trim() : "";
+
+      // 日期：<pubDate>Tue, 28 Apr 2026 06:00:00 +0000</pubDate>
+      const dateM = block.match(/<pubDate>([^<]+)<\/pubDate>/);
+      let date = new Date().toISOString().slice(0, 10);
+      if (dateM) {
+        const parsed = new Date(dateM[1]);
+        if (!isNaN(parsed)) date = parsed.toISOString().slice(0, 10);
+      }
+
+      if (title && url) {
+        items.push({ title, date, url });
+      }
     }
 
-    // 确认落地 URL 是具体文章页（/news/archives/数字）
-    const isArticlePage = /news\/archives\/\d+/.test(finalUrl);
-    const newsUrl = isArticlePage ? finalUrl : tagUrl;
-
-    // 从 meta keywords 第一段（文章标题）里找日期
-    const kwMatch = html.match(/<meta[^>]+name="keywords"[^>]+content="([^"]+)"/i)
-                 || html.match(/<meta[^>]+content="([^"]+)"[^>]+name="keywords"/i);
-    const kwText = kwMatch ? kwMatch[1] : "";
-
-    // 优先匹配 YYYY-MM-DD，其次匹配 X月X日
-    let date = new Date().toISOString().slice(0, 10); // 兜底用今天
-    const isoDate = kwText.match(/(\d{4}-\d{2}-\d{2})/);
-    const cnDate  = kwText.match(/(\d{1,2})月(\d{1,2})日/);
-    if (isoDate) {
-      date = isoDate[1];
-    } else if (cnDate) {
-      const year = new Date().getFullYear();
-      date = `${year}-${cnDate[1].padStart(2, "0")}-${cnDate[2].padStart(2, "0")}`;
-    }
-
-    console.log(`[news] event${id} 提取到：${title} | ${date} | ${newsUrl}`);
-    return [{ title, date, url: newsUrl }];
+    console.log(`[news] event${id} RSS 解析到 ${items.length} 条`);
+    return items;
   } catch (e) {
-    console.error(`[news] event${id} 抓取异常：`, e.message);
+    console.error(`[news] event${id} RSS 异常：`, e.message);
     return [];
   }
 }
