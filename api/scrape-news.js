@@ -249,6 +249,7 @@ export default async function handler(req, res) {
   try {
     const maxPages = parseInt(req.query.pages || "1");
     const newsOnly = req.query.newsonly === "1";
+    const limit    = parseInt(req.query.limit || "0"); // 0 = 不限制
     const token = await getFeishuToken();
     const { raceTableId, newsTableId } = await getTableIds(token);
     if (!raceTableId) return res.status(400).json({ error: "找不到赛事信息表" });
@@ -273,12 +274,16 @@ export default async function handler(req, res) {
     const seenRaces = new Set(existingRaces);
     const seenNews  = new Set(existingNews);
 
-    for (const race of allRaces) {
+    // 支持 limit 参数，限制本次处理条数，避免超时
+    const racesToProcess = limit > 0 ? allRaces.slice(0, limit) : allRaces;
+    console.log(`本次处理：${racesToProcess.length} 场`);
+
+    for (const race of racesToProcess) {
       if (!race.name) continue;
 
-      // 抓详情页（补充城市、日期、规模）
-      const detail = await scrapeDetail(race.id, race.name);
-      await new Promise(r => setTimeout(r, 300));
+      // newsonly 模式下跳过详情页请求，节省时间
+      const detail = newsOnly ? {} : await scrapeDetail(race.id, race.name);
+      if (!newsOnly) await new Promise(r => setTimeout(r, 300));
 
       // 写入赛事（仅新赛事）
       if (!newsOnly && !seenRaces.has(race.name)) {
