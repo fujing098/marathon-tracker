@@ -237,7 +237,8 @@ async function scrapePage(page) {
     const loc  = locM ? locM[1].trim() : "";
     const city = parseCityFromLocation(loc);
 
-    races.push({ name, url: eUrl, id, raceDate, city, loc, regEnd, raceType: parseRaceType(name + loc) });
+    console.log(`[list] ${name} | date:${raceDate} | city:${city} | loc:${loc}`);
+races.push({ name, url: eUrl, id, raceDate, city, loc, regEnd, raceType: parseRaceType(name + loc) });
   }
   return races;
 }
